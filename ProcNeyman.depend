@@ -1,0 +1,29 @@
+# depslib dependency file v1.0
+1600110450 source:e:\own programs\c++ projects\procneyman\print_lib.cpp
+	<iostream>
+	<conio.h>
+	<string>
+
+1599335054 source:e:\own programs\c++ projects\procneyman\test1.cpp
+	"print_lib.h"
+
+1600110434 e:\own programs\c++ projects\procneyman\print_lib.h
+	<string>
+
+1600114696 source:e:\own programs\c++ projects\procneyman\main.cpp
+	<conio.h>
+	<cstdlib>
+	<iostream>
+	<fstream>
+	"print_lib.h"
+	<windows.h>
+	<string>
+	<fstream>
+	<regex>
+	<algorithm>
+
+1599422515 source:c:\procneyman\print_lib.cpp
+	<iostream>
+	<conio.h>
+	<string>
+
