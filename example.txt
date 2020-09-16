@@ -1,3 +1,4 @@
 ireg 2, 220
-ireg 3, 100
+label:ireg 3, 100
 sub 3, 2
+jp label

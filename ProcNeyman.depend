@@ -32,3 +32,26 @@
 	<conio.h>
 	<string>
 
+1600244569 source:e:\own programs\c++ projects\procemulator\print_lib.cpp
+	<iostream>
+	<conio.h>
+	<string>
+
+1600264601 source:e:\own programs\c++ projects\procemulator\main.cpp
+	<conio.h>
+	<cstdlib>
+	<iostream>
+	<fstream>
+	"print_lib.h"
+	<windows.h>
+	<string>
+	<fstream>
+	<regex>
+	<algorithm>
+	<map>
+	<utility>
+	<vector>
+
+1600244569 e:\own programs\c++ projects\procemulator\print_lib.h
+	<string>
+
