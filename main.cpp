@@ -217,6 +217,7 @@ void save_info_in_file(string info) {
 
 // Фунцкия для парсинга программного кода и перевода его в двоичный код
 string parse_program(string program) {
+    regex label("^[A-Za-z0-9]+:(.*)");
     regex addr2_regex("^(add|sub|and|or|xor|shl|shr|rtr|mtm|rtm|mtr){1}(\\s)+([0-9])+,(\\s)*([0-9])+$");
     regex addr1_regex("^(not|jez|jgz|jlz|jp){1}(\\s)+([0-9])+$");
     regex literal_regex("^(ireg|imem){1}(\\s)+[0-9]+,(\\s)*([0-9])+$");
@@ -231,12 +232,15 @@ string parse_program(string program) {
 
     cout << program << endl;
 
+
+    bool label_match, addr1_match, addr2_match, literal_match;
     for (auto i = program_begin; i != program_end; ++i) {
         string cmd = (*i).str();
         cout << "CURRENT CMD: " << cmd << endl;
-        bool addr2_match = regex_match(cmd, addr2_regex);
-        bool addr1_match = regex_match(cmd, addr1_regex);
-        bool literal_match = regex_match(cmd, literal_regex);
+        label_match = regex_match(cmd, label);
+        addr2_match = regex_match(cmd, addr2_regex);
+        addr1_match = regex_match(cmd, addr1_regex);
+        literal_match = regex_match(cmd, literal_regex);
         cout << "AFTER REGEX: " << addr2_match << addr1_match << literal_match << endl;
 
         if (!(addr1_match || addr2_match || literal_match)) {
@@ -315,7 +319,19 @@ void load_program_to_memory(string program) {
   * -------------------------------------------------------- */
 
 // Функция для загрузки данных в память
-void load_data_to_memory(string data){};
+void load_data_to_memory(string data) {
+    string colon = ":";
+    regex line_regex("[^\\n]+");
+
+    auto file_begin = sregex_iterator(data.begin(), data.end(), line_regex);
+    auto file_end = sregex_iterator();
+    for (auto i = file_begin; i != file_end; ++i) {
+        string data = (*i).str();
+        string addr = data.substr(0, data.find(colon));
+        data.erase(0, data.find(colon) + 1);
+        dmem[stoi(addr)] = stoi(data);
+    }
+};
 
 /** ------------------------------------------------------ *
     ОПРЕДЕЛЕНИЕ ФУНКЦИЙ ДЛЯ НАСТРОЙКИ И РАБОТЫ УСТРОЙСТВА
@@ -327,7 +343,6 @@ void show_menu() {
 
     // Ввод программы вручную
     // Ввод данных вручную
-    // Настройки
 
     // Запуск программы
     cout << "0. Настройки отладочных выводов." << endl;
@@ -342,9 +357,8 @@ void show_menu() {
     int key; //  Код нажатой кнопки
     while (!start_processor) {
         switch(key = getch()) {
-            case KEY_0: {
+            case KEY_0: { // Настройки отладочных выводов
                 config_output_debug();
-                // настройки работы модели
                 cout << endl << "Выберите действие: ";
                 break;
             }
@@ -361,28 +375,26 @@ void show_menu() {
                 break;
             }
 
-            case KEY_3: {
+            case KEY_3: { // Загрузить данные для ОП
                 string data = get_info_from_file();
                 load_data_to_memory(data);
                 cout << endl << "Выберите действие: ";
                 break;
             }
 
-            case KEY_4: {
+            case KEY_4: { // Вывести память команд
                 output_debug(2);
                 cout << endl << "Выберите действие: ";
-                // вывести память команд
                 break;
             }
 
-            case KEY_5: {
+            case KEY_5: { // Вывести память данных
                 output_debug(4);
                 cout << endl << "Выберите действие: ";
-                // вывести память данных
                 break;
             }
 
-            case KEY_6: {
+            case KEY_6: { // Начать работу процессора
                 start_processor = true;
                 break;
             }
