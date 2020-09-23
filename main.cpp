@@ -27,19 +27,20 @@
 #include <fstream>      // Библиотека для работы с файловыми потоками ввода/вывода
 #include "print_lib.h"  // Библиотека для дебаг-вывода
 #include <windows.h>    // Библиотека для изменения размеров консольного окна
-#include <string>
-#include <fstream>
-#include <regex>
-#include <algorithm>
-#include <map>
-#include <utility>
-#include <vector>
+#include <string>       // Библиотека для типа "строка"
+#include <fstream>      // Библиотека для чтения/записи файлов
+#include <regex>        // Библиотека для регулярных выражений
+#include <algorithm>    // Библиотека для трансформации строки в нижний регистр
+#include <map>          // Библиотека для использования ассоциативных массивов "Map"
+#include <utility>      // Библиотека для использования типа "Pair"
+#include <vector>       // Библиотека для использования динамических массивов "Vector"
+#include <ctype.h>
 
 // Флаги условий
 #define FLAG 15 // Номер регистра флагов
 #define EZ 1    // Флаг " == 0"
 #define GZ 2    // Флаг "  > 0"
-#define LZ 3    // Флаг "  < 0"
+#define LZ 4    // Флаг "  < 0"
 
 // Коды клавиш для действий
 // внутри контроллера
@@ -47,7 +48,7 @@
 #define KEY_DOWN 80
 #define KEY_LEFT 75
 #define KEY_RIGHT 77
-#define KEY_O 79
+#define KEY_O 111
 #define KEY_Y 121
 #define KEY_N 110
 #define KEY_Q 113
@@ -60,6 +61,7 @@
 #define KEY_5 53
 #define KEY_6 54
 
+// Коды команд
 #define EMPTY 0
 #define ADD   1
 #define SUB   2
@@ -75,10 +77,11 @@
 #define MTM   12
 #define RTM   13
 #define MTR   14
-#define JEZ   15
-#define JGZ   16
-#define JLZ   17
-#define JP    18
+#define MTRA  15
+#define JEZ   16
+#define JGZ   17
+#define JLZ   18
+#define JP    19
 
 // Инициализация памяти команд
 const unsigned short int cmem_size = 32;
@@ -99,13 +102,16 @@ const unsigned short int reg_data_size = 16;
 short int reg[reg_size] = {};
 
 // Размеры частей команды
-int cmdtype_size = 5; int literal_size = 17;
-int op1_size = 5; int op2_size = 5;
+unsigned int cmdtype_size = 5,  // Тип команды
+             literal_size = 17, // Литерал
+                 op1_size = 5,  // 1-й адрес
+                 op2_size = 5;  // 2-й адрес
 
-int cmd_count = 19;
-string cmd_list[] = {"empty", "add", "sub", "and", "or", "xor", "not",
-                     "shl", "shr", "ireg", "imem", "rtr", "mtm", "rtm",
-                     "mtr", "jez", "jgz", "jlz", "jp"};
+int cmd_count = 20; // кол-во команд
+string cmd_list[] = {"empty", "add", "sub", "and", "or", "xor",
+                     "not", "shl", "shr", "ireg", "imem", "rtr",
+                     "mtm", "rtm", "mtr", "mtra", "jez", "jgz",
+                     "jlz", "jp"};
 
 using namespace std;
 
@@ -178,26 +184,32 @@ int main() {
 // Функция для получения информации из файла с даннными/командами
 vector<string> get_info_from_file() {
 
-    bool file_flag = false;
-    string path, line;
-    vector<string> text;
+    bool file_flag = false; // Флаг работы с файлом
+    string path; // путь к файлу
+    string line; // строка файла
+    vector<string> text; // ассоциативный массив строк из файла
 
     while (!file_flag) {
         cout << endl << "Укажите путь к файлу (полный или относительно директории эмулятора): ";
-        cin >> path;
+        cin >> path; // Ввод пути
+
         ifstream file(path);
+        // Если файл открыт
         if (file.is_open()) {
+
+            // Подсчёт количества строк файла
             int line_count = 0;
             while (getline(file, line)) line_count++;
             text.resize(line_count);
 
-            file.clear();
-            file.seekg(0);
-            cout << text.size() << endl;
+            // Запись строк из файла в массив
+            file.clear(); file.seekg(0);
             for (int i = 0; i < line_count; i++) {
                 getline(file, line);
                 text[i] = line;
             }
+
+            // Закрытие файла
             file.close();
             file_flag = true;
         }
@@ -212,13 +224,17 @@ vector<string> get_info_from_file() {
 void save_info_in_file(string info) {
 
     bool file_flag = false;
-    string path, text, line;
+    string path; // Путь к файлу
 
     while (!file_flag) {
         cout << "Укажите путь к файлу (полный или относительно директории эмулятора): ";
-        cin >> path;
+        cin >> path; // Ввод пути
+
+        // Запись строк в файл
         ofstream file(path);
         file << info;
+
+        // Закрытие файла
         file.close();
         file_flag = true;
     }
@@ -228,11 +244,28 @@ void save_info_in_file(string info) {
     ОПРЕДЕЛЕНИЕ ФУНКЦИЙ ДЛЯ ПАРСИНГА ПРОГРАММЫ
   * ------------------------------------------- */
 
+// Функция генерации ошибки парсинга
+vector<string> generate_parse_error(vector<string> program, string error_type, int index) {
+     cout << endl << error_type << " в " << index << endl;
+     program.resize(1);
+     program[0] = "ERROR";
+     return program;
+}
+
+// Функция для чистки строки от пробелов и табуляций
+string clear_string_from_spaces(string str) {
+    int pointer = 0;
+    while (!isalpha(str[pointer])) pointer++;
+    if (pointer > 0) str.erase(0, pointer);
+    return str;
+}
+
 // Фунцкия для парсинга программного кода и перевода его в двоичный код
 vector<string> parse_program(vector<string> program) {
     // TODO: Добавить возможность писать команды с табуляциями и пробелами (даже между частями)
 
-    for (int i = 0; i < program.size(); i++)
+    // Вывод программы на языке ассемблера
+    for (unsigned int i = 0; i < program.size(); i++)
         cout << program[i] << endl;
 
     string cmdtype, literal, op1, op2;
@@ -240,149 +273,147 @@ vector<string> parse_program(vector<string> program) {
     map <string, int> label_map;
 
     // Регулярные выражения для всех возможных типов команд
-    regex addr2_regex("^(\\s)*(add|sub|and|or|xor|shl|shr|rtr|mtm|rtm|mtr){1}(\\s)+([0-9])+,(\\s)*([0-9])+$");
+    regex addr2_regex("^(\\s)*(add|sub|and|or|xor|shl|shr|rtr|mtm|rtm|mtr|mtra){1}(\\s)+([0-9])+,(\\s)*([0-9]$)+$");
     regex addr1_regex("^(\\s)*(not|jez|jgz|jlz|jp){1}(\\s)+([0-9])+$");
     regex condition_mark_regex("^(\\s)*(jez|jgz|jlz|jp){1}(\\s)+([A-Za-z])+$");
     regex literal_regex("^(\\s)*(ireg|imem){1}(\\s)+[0-9]+,(\\s)*([0-9])+$");
+    regex empty_regex("^(\\s)*$");
     regex cmd_regex("[^\\n]+");
 
     // Флаги соответствия команды регулярным выражениям
-    bool condition_mark_match, addr1_match, addr2_match, literal_match, label_match;
+    bool condition_mark_match, addr1_match, addr2_match,
+                literal_match, label_match, empty_match;
 
-    //auto program_begin = sregex_iterator(program.begin(), program.end(), cmd_regex);
-    //auto program_end = sregex_iterator();*/
-
+    // Регулярное выражение для выделения метки
+    regex label_regex("[A-Za-z0-9]+:(.*)");
 
     /** ----------------------------------------------------- *
         Первый цикл проходится по программе и ищет метки.
         Если они находятся, они добавляются в ассоциативный
         контейнер label_map<"название метки", "номер строки">
       * ----------------------------------------------------- */
-    int cmd_pointer = 0;
-    regex label_regex("[A-Za-z0-9]+:(.*)");
-    for (int i = 0; i < program.size(); i++) {
-        string cmd_label = program[i];
-        label_match = regex_match(cmd_label, label_regex);
+    for (unsigned int i = 0; i < program.size(); i++) {
+        string cmd = clear_string_from_spaces(program[i]);
+
+        // Если метка найдена, происходит её отделение от
+        // команды и занесение в ассоциативный массив
+        label_match = regex_match(cmd, label_regex);
         if (label_match) {
-            string label = cmd_label.substr(0, cmd_label.find(label_sep));
-            cmd_label.erase(0, cmd_label.find(label_sep) + 1);
+            string label = cmd.substr(0, cmd.find(label_sep));
+            cmd.erase(0, cmd.find(label_sep) + 1);
+            cmd = clear_string_from_spaces(cmd);
             label_map[label] = i;
-            program[i] = cmd_label;
         }
-        cmd_pointer++;
+        program[i] = cmd;
     }
-    cout << (label_map.size() > 0 ? "Метки найдены" : "Метки НЕ найдены") << endl << endl;
+
+    cout << (label_map.size() > 0 ? "Метки найдены" : "Метки НЕ найдены");
+    cout << endl << endl;
     getch();
 
     /** ------------------------------------------------------------ *
         Второй цикл проходится по программе и парсит каждую команду,
         разделяя её на код команды, литерал и адреса/метки адресов
       * ------------------------------------------------------------ */
-    for (int i = 0; i < program.size(); i++) {
+    for (unsigned int i = 0; i < program.size(); i++) {
 
         // Вывод текущей команды
         string cmd = program[i];
         cout << "CURRENT CMD: " << cmd << endl;
 
-        // ???? и результатов её
-        // соответствия с регулярными значениями
+        // Проверяем соответствие команды
+        // с регулярными значениями
         addr2_match = regex_match(cmd, addr2_regex);
         addr1_match = regex_match(cmd, addr1_regex);
         literal_match = regex_match(cmd, literal_regex);
         condition_mark_match = regex_match(cmd, condition_mark_regex);
-        //cout << "AFTER REGEX: " << addr2_match << addr1_match << literal_match << endl;
+        empty_match = regex_match(cmd, empty_regex);
+        cout << "AFTER REGEX: " << addr2_match << addr1_match;
+        cout << literal_match << condition_mark_match;
+        cout << empty_match << endl;
 
-        if (!(addr1_match || addr2_match || literal_match || condition_mark_match)) {
-            cout << endl << "error_match in " << i << endl;
-            program.resize(1);
-            program[0] = "ERROR";
-            return program;
-        }
+        // Если соответствий не найдено, возвращается ошибка
+        if (!(addr1_match || addr2_match || literal_match ||
+              condition_mark_match || empty_match))
+            generate_parse_error(program, "error_match", i);
+        else if (empty_match)
+            program[i] = get_binary(0, cmdtype_size + literal_size + op1_size + op2_size);
+        else {
+            /** -------------------- *
+                ПАРСИНГ КОДА КОМАНДЫ
+              * -------------------- */
+            cmdtype = cmd.substr(0, cmd.find(part_sep));
+            cout << "cmd_type: " << cmdtype << endl;
 
-        /** -------------------- *
-            ПАРСИНГ КОДА КОМАНДЫ
-          * -------------------- */
-        cmdtype = cmd.substr(0, cmd.find(part_sep));
-        cout << "cmd_type: " << cmdtype << endl;
+                // Убираем из кода команды пробелы и табуляции, удаляем его из команды
+                cmdtype.erase(remove_if(cmdtype.begin(), cmdtype.end(), ::isspace), cmdtype.end());
+                cmd.erase(0, cmd.find(part_sep) + 1);
 
-            // Убираем из кода команды пробелы и табуляции, удаляем его из команды
-            cmdtype.erase(remove_if(cmdtype.begin(), cmdtype.end(), ::isspace), cmdtype.end());
-            cmd.erase(0, cmd.find(part_sep) + 1);
-
-            // Сводим команду к единому регистру (маленькие буквы) и ищем
-            // её в массиве команд. Индекс команды в массиве - код этой команды
-            transform(cmdtype.begin(), cmdtype.end(), cmdtype.begin(), ::tolower);
-            for (int j = 0; j < cmd_count; j++)
-                if (cmdtype.compare(cmd_list[j]) == 0) {
-                    cmdtype = get_binary(j, cmdtype_size);
-                    break;
-                }
-
-        /** ----------------------------- *
-            ПАРСИНГ 1-ГО АДРЕСА В КОМАНДЕ
-          * ----------------------------- */
-        op1 = cmd.substr(0, cmd.find(part_sep));
-        cout << "op1: " << op1 << endl;
-
-            // Если вместо адреса стоит метка, то производится подстановка
-            // адреса вместо неё (для условных и безусловных переходов)
-            if (condition_mark_match) {
-                // Убираем из метки пробелы и табуляции
-                op1.erase(remove_if(op1.begin(), op1.end(), ::isspace), op1.end());
-
-                // Инициализируем итератор массива меток
-                map <string, int> :: iterator iter = label_map.begin();
-
-                // Пробегаемся по массиву меток и ищем совпадение ключа
-                // с названием метки из команды
-                for (; iter != label_map.end(); iter++)
-                    if (op1.compare(iter->first) == 0) {
-                        op1 = get_binary(iter->second, op1_size);
+                // Сводим команду к единому регистру (маленькие буквы) и ищем
+                // её в массиве команд. Индекс команды в массиве - код этой команды
+                transform(cmdtype.begin(), cmdtype.end(), cmdtype.begin(), ::tolower);
+                for (int j = 0; j < cmd_count; j++)
+                    if (cmdtype.compare(cmd_list[j]) == 0) {
+                        cmdtype = get_binary(j, cmdtype_size);
                         break;
                     }
 
-                // Если итератор дошёл до конца, значит метка
-                // не была найдена. Выбрасываем ошибку.
-                if (iter == label_map.end()) {
-                    cout << endl << "error_condition in " << i << endl;
-                    program.resize(1);
-                    program[0] = "ERROR";
-                    return program;
+            /** ----------------------------- *
+                ПАРСИНГ 1-ГО АДРЕСА В КОМАНДЕ
+              * ----------------------------- */
+            op1 = cmd.substr(0, cmd.find(part_sep));
+            cout << "op1: " << op1 << endl;
+
+                // Если вместо адреса стоит метка, то производится подстановка
+                // адреса вместо неё (для условных и безусловных переходов)
+                if (condition_mark_match) {
+                    // Убираем из метки пробелы и табуляции
+                    op1.erase(remove_if(op1.begin(), op1.end(), ::isspace), op1.end());
+
+                    // Инициализируем итератор массива меток
+                    map <string, int> :: iterator iter = label_map.begin();
+
+                    // Пробегаемся по массиву меток и ищем совпадение ключа
+                    // с названием метки из команды
+                    for (; iter != label_map.end(); iter++)
+                        if (op1.compare(iter->first) == 0) {
+                            op1 = get_binary(iter->second, op1_size);
+                            break;
+                        }
+
+                    // Если итератор дошёл до конца, значит метка
+                    // не была найдена. Выбрасываем ошибку.
+                    if (iter == label_map.end())
+                        generate_parse_error(program, "error_condition", i);
                 }
-            } else // Если команда не относится к БП или УП, конвертируем адрес в бинарный код
-                op1 = get_binary(stoi(op1), op1_size);
 
-            cout << "Break";
-            getch();
+                // Если команда не относится к БП или УП,
+                // конвертируем адрес в бинарный код
+                else op1 = get_binary(stoi(op1), op1_size);
 
-            // Удаляем часть из команды
-            cmd.erase(0, cmd.find(part_sep) + 1);
+                // Удаляем часть из команды
+                cmd.erase(0, cmd.find(part_sep) + 1);
 
-        /** -------------------------------------------- *
-            ПАРСИНГ 2-ГО АДРЕСА В КОМАНДЕ (ЕСЛИ ОН ЕСТЬ)
-          * -------------------------------------------- */
-        if (addr2_match)
-            op2 = get_binary(stoi(cmd.substr(0, cmd.find(part_sep))), op2_size);
-        else
-            op2 = get_binary(0, op2_size);
+            /** -------------------------------------------- *
+                ПАРСИНГ 2-ГО АДРЕСА В КОМАНДЕ (ЕСЛИ ОН ЕСТЬ)
+              * -------------------------------------------- */
+            if (addr2_match)
+                op2 = get_binary(stoi(cmd.substr(0, cmd.find(part_sep))), op2_size);
+            else
+                op2 = get_binary(0, op2_size);
 
-        /** ----------------------------------------- *
-            ПАРСИНГ ЛИТЕРАЛА В КОМАНДЕ (ЕСЛИ ОН ЕСТЬ)
-          * ----------------------------------------- */
-        if (literal_match)
-            literal = get_binary(stoi(cmd.substr(0, cmd.find(part_sep))), literal_size);
-        else
-            literal = get_binary(0, literal_size);
+            /** ----------------------------------------- *
+                ПАРСИНГ ЛИТЕРАЛА В КОМАНДЕ (ЕСЛИ ОН ЕСТЬ)
+              * ----------------------------------------- */
+            if (literal_match)
+                literal = get_binary(stoi(cmd.substr(0, cmd.find(part_sep))), literal_size);
+            else
+                literal = get_binary(0, literal_size);
 
-        cout << "Break";
-            getch();
-
-        program[i] = cmdtype + literal + op1 + op2;
-        cout << "BINARY: " << cmdtype << " ";
-        cout << literal << " " << op1 << " " << op2 << endl << endl;
-
-        cout << "Break";
-            getch();
+            program[i] = cmdtype + literal + op1 + op2;
+            cout << "BINARY: " << cmdtype << " ";
+            cout << literal << " " << op1 << " " << op2 << endl << endl;
+        }
     }
     return program;
 };
@@ -398,7 +429,7 @@ void load_data_to_memory(vector<string> data) {
 
     auto file_begin = sregex_iterator(data.begin(), data.end(), line_regex);
     auto file_end = sregex_iterator();*/
-    for (int i = 0; i < data.size(); i++) {
+    for (unsigned int i = 0; i < data.size(); i++) {
         string data_elem = data[i];
         string addr = data_elem.substr(0, data_elem.find(colon));
         data_elem.erase(0, data_elem.find(colon) + 1);
@@ -412,18 +443,12 @@ void load_program_to_memory(vector<string> program) {
         cout << endl << program[0] << endl;
     }
     else {
-        /*regex cmd_regex("[^\\n]+");
-        auto program_begin = sregex_iterator(program.begin(), program.end(), cmd_regex);
-        auto program_end = sregex_iterator();*/
         int cmem_pointer = 0; // ?
-        for (int i = 0; i < program.size(); i++) {
+        cout << "Записанная программа:" << endl;
+        for (unsigned int i = 0; i < program.size(); i++) {
             cout << program[i] << endl;
             cmem[cmem_pointer + i] = stoll(program[i], 0, 2);
         }
-        cout << "Записанная программа:" << endl;
-        for (int i = 0; i < program.size(); i++)
-            cout << program[i] << endl;
-
     }
         /*cout << "Программа заняла " << "n" << " ячеек." << endl;
     cout << "Начальный адрес: " << "" << endl;
@@ -503,12 +528,6 @@ void show_menu() {
                 start_processor = true;
                 break;
             }
-
-            /*case KEY_7: {
-                start_processor = true;
-                break;
-            }
-            default: break;*/
         }
     }
 }
@@ -538,13 +557,13 @@ void architecture_work() {
     unsigned int op1_max = 1; for (unsigned int i = 0; i < op1_size; i++) op1_max *= 2;
     unsigned int op2_max = 1; for (unsigned int i = 0; i < op2_size; i++) op2_max *= 2;
 
-    bool  prev_flag = false;  // Флаг перехода к предыдущей команде
+    //bool  prev_flag = false;  // Флаг перехода к предыдущей команде
     bool  next_flag = false;  // Флаг перехода к следующей команде
     bool debug_flag = false;  // Флаг перехода к настройкам
     bool   end_flag = false;  // Флаг перехода к завершению работы
 
     unsigned int cmd; //буфер команд
-    unsigned int pc = 0; //счетчик команд
+    unsigned int pc = 0, old_pc; //счетчик команд
 
     //  Разбитая команда
     unsigned int cmdtype, op1, op2;
@@ -552,6 +571,7 @@ void architecture_work() {
 
     int key = 0;
     while(!end_flag) {
+        old_pc = pc;
         cout << "*";
         for (int i = 0; i < 150; i++) cout << "-";
         cout << "*" << endl << endl;
@@ -583,36 +603,36 @@ void architecture_work() {
 
             // Выставление флагов после операций
             // TODO: Добавить переполнение
-            if (reg[op1] == 0) reg[FLAG] |= EZ;
-            if (reg[op1]  > 0) reg[FLAG] |= GZ;
-            if (reg[op1]  < 0) reg[FLAG] |= EZ;
+            if (reg[op1] == 0) reg[FLAG] = EZ;
+            if (reg[op1]  > 0) reg[FLAG] = GZ;
+            if (reg[op1]  < 0) reg[FLAG] = LZ;
         }
 
         // Другие операции (9-18)
         else {
-            cout << "CONDITION " << get_binary(cmdtype,32) << endl;
             switch (cmdtype) {
                 // Взаимодействие между регистрами/ячейками памяти данных
-                case IREG :  reg[op1] =   literal; break; // Копирование непосредственного значения в регистр
-                case IMEM : dmem[op1] =   literal; break; // Копирование непосредственного значения в память
-                case RTR  :  reg[op1] =  reg[op2]; break; // Копирование с одного регистра на другой регистр
-                case MTM  : dmem[op1] = dmem[op2]; break; // Копирование с одной ячейки памяти в другую ячейку памяти
-                case RTM  :  reg[op1] = dmem[op2]; break; // Копирование с регистра в ячейку памяти
-                case MTR  : dmem[op1] =  reg[op2]; break; // Копирование из ячейки памяти в регистр
+               case IREG :   reg[op1] =   literal;      break; // Копирование непосредственного значения в регистр
+                case IMEM : dmem[op1] =   literal;      break; // Копирование непосредственного значения в память
+                case RTR  :  reg[op1] =  reg[op2];      break; // Копирование с одного регистра на другой регистр
+                case MTM  : dmem[op1] = dmem[op2];      break; // Копирование с одной ячейки памяти в другую ячейку памяти
+                case RTM  : dmem[op1] = reg[op2];       break; // Копирование с регистра в ячейку памяти
+                case MTR  :  reg[op1] = dmem[op2] ;     break; // Копирование из ячейки памяти (непосредственно) в регистр
+                case MTRA :  reg[op1] = dmem[reg[op2]]; break; // Копирование из ячейки памяти (адрес в регистре) в регистр
 
                 // Операции условного перехода (если выполняется, на счётчик команд поступает
                 // значение литерала, в противном случае счётчик команд инкрементируется)
-                case JEZ : pc = (reg[FLAG] & EZ) ? op1 : pc + 1; break; // Значение на reg[op1] >  0
-                case JGZ : pc = (reg[FLAG] & GZ) ? op1 : pc + 1; break; // Значение на reg[op1] <  0
-                case JLZ : pc = (reg[FLAG] & EZ) ? op1 : pc + 1; break; // Значение на reg[op1] == 0
-                case JP  : cout << "HERE"; pc = op1;                break; // безусловный переход
+                case JEZ : pc = (reg[FLAG] & EZ) ? op1 : pc + 1; break; // Значение на reg[op1] == 0
+                case JGZ : pc = (reg[FLAG] & GZ) ? op1 : pc + 1; break; // Значение на reg[op1] >  0
+                case JLZ : pc = (reg[FLAG] & LZ) ? op1 : pc + 1; break; // Значение на reg[op1] <  0
+                case JP  : pc = op1;                             break; // безусловный переход
 
                 default : break;
             }
         }
 
         cout <<  "Счётчик команд: ";
-        print_binary(pc, cmem_addr_size);
+        print_binary(old_pc, cmem_addr_size);
         cout << endl << "Текущая команда:" << endl;
         cout << "Тип команды | Литерал\t\t| 1-ый адрес | 2-ой адрес |" << endl;
         print_binary(cmdtype, cmem_addr_size);  cout << "\t    | ";
@@ -640,6 +660,9 @@ void architecture_work() {
             if (debug_flag) {
                 config_output_debug();
                 debug_flag = false;
+                cout << "\"Стрелка вниз\" - следующая команда, ";
+                cout << "\"O\" - настройки, ";
+                cout << "\"Q\" - закончить работу процессора";
             }
         }
 
@@ -647,14 +670,13 @@ void architecture_work() {
             key = 0;
             next_flag = false;
             debug_flag = false;
-            if (cmdtype >= ADD && cmdtype <= MTR)
+            if (!(cmdtype >= JEZ && cmdtype <= JP))
                 pc = pc + 1;
             cout << '\r';
             // Сброс счётчик команд при достижении
             // последнего адреса в памяти команд
             if (pc > cmem_size) pc = 0;
         }
-        cout << op1 << "   " << pc << endl;
     }
 }
 
@@ -711,10 +733,7 @@ void load_saved_state() {
 
         cout << "1. Файл памяти команд";
         saved_prog_memory = get_info_from_file();
-        /*auto file_begin = sregex_iterator(saved_prog_memory.begin(), saved_prog_memory.end(), line_regex);
-        auto file_end = sregex_iterator();
-        for (auto i = file_begin; i != file_end; ++i) {*/
-        for (int i = 0; i < saved_prog_memory.size(); i++) {
+        for (unsigned int i = 0; i < saved_prog_memory.size(); i++) {
             string cmd = saved_prog_memory[i];
             string addr = cmd.substr(0, cmd.find(colon));
             cmd.erase(0, cmd.find(colon) + 1);

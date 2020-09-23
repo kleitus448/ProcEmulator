@@ -37,7 +37,7 @@
 	<conio.h>
 	<string>
 
-1600264601 source:e:\own programs\c++ projects\procemulator\main.cpp
+1600862486 source:e:\own programs\c++ projects\procemulator\main.cpp
 	<conio.h>
 	<cstdlib>
 	<iostream>
@@ -51,6 +51,7 @@
 	<map>
 	<utility>
 	<vector>
+	<ctype.h>
 
 1600244569 e:\own programs\c++ projects\procemulator\print_lib.h
 	<string>
