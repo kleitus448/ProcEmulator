@@ -264,25 +264,24 @@ string clear_string_from_spaces(string str) {
 vector<string> parse_program(vector<string> program) {
     // TODO: Добавить возможность писать команды с табуляциями и пробелами (даже между частями)
 
-    // Вывод программы на языке ассемблера
-    for (unsigned int i = 0; i < program.size(); i++)
-        cout << program[i] << endl;
+    string cmdtype, literal, op1, op2;  // Строки для отделения частей команды
+    string part_sep = " ";              // Разделители частей команды
 
-    string cmdtype, literal, op1, op2;
-    string part_sep = " ", label_sep = ":";
-    map <string, int> label_map;
+    string label_sep = ":";             // Разделитель метки
+    map <string, int> label_map;        // Ассоциативный массив хранения меток <"метка", "номер строки">
 
     // Регулярные выражения для всех возможных типов команд
     regex addr2_regex("^(\\s)*(add|sub|and|or|xor|shl|shr|rtr|mtm|rtm|mtr|mtra){1}(\\s)+([0-9])+,(\\s)*([0-9]$)+$");
     regex addr1_regex("^(\\s)*(not|jez|jgz|jlz|jp){1}(\\s)+([0-9])+$");
     regex condition_mark_regex("^(\\s)*(jez|jgz|jlz|jp){1}(\\s)+([A-Za-z])+$");
     regex literal_regex("^(\\s)*(ireg|imem){1}(\\s)+[0-9]+,(\\s)*([0-9])+$");
-    regex empty_regex("^(\\s)*$");
+    regex empty_regex("^(\\s)*empty(\\s)*$");
     regex cmd_regex("[^\\n]+");
+    regex no_mean_regex("(^(//.*)$)|(^[(\\t)(\\s)]*$)");
 
     // Флаги соответствия команды регулярным выражениям
     bool condition_mark_match, addr1_match, addr2_match,
-                literal_match, label_match, empty_match;
+         literal_match, label_match, empty_match, no_mean_match;
 
     // Регулярное выражение для выделения метки
     regex label_regex("[A-Za-z0-9]+:(.*)");
@@ -290,22 +289,35 @@ vector<string> parse_program(vector<string> program) {
     /** ----------------------------------------------------- *
         Первый цикл проходится по программе и ищет метки.
         Если они находятся, они добавляются в ассоциативный
-        контейнер label_map<"название метки", "номер строки">
+        контейнер label_map <"название метки", "номер строки">
       * ----------------------------------------------------- */
-    for (unsigned int i = 0; i < program.size(); i++) {
-        string cmd = clear_string_from_spaces(program[i]);
+    unsigned int bin_pointer = 0;
+    string cmd;
+    for (unsigned int i = 0; i < program.size(); i++) {ФS
+        cmd = program[i];
+        cout << cmd << endl;
 
-        // Если метка найдена, происходит её отделение от
-        // команды и занесение в ассоциативный массив
-        label_match = regex_match(cmd, label_regex);
-        if (label_match) {
-            string label = cmd.substr(0, cmd.find(label_sep));
-            cmd.erase(0, cmd.find(label_sep) + 1);
+        no_mean_match = regex_match(cmd, no_mean_regex);
+        if (!no_mean_match) { // Строка кода не пустая
             cmd = clear_string_from_spaces(cmd);
-            label_map[label] = i;
+
+            // Если метка найдена, происходит её отделение от
+            // команды и занесение в ассоциативный массив
+            label_match = regex_match(cmd, label_regex);
+
+            if (label_match) { // Строка имеет метку
+                string label = cmd.substr(0, cmd.find(label_sep));
+                cmd.erase(0, cmd.find(label_sep) + 1);
+                cmd = clear_string_from_spaces(cmd);
+                label_map[label] = i;
+            }
+            program[bin_pointer] = cmd;
+            bin_pointer++;
         }
-        program[i] = cmd;
     }
+    cout << "Размер программы: " << program.size() << endl;
+    cout << "Размер реальной программы: " << bin_pointer << endl;
+    program.resize(bin_pointer);
 
     cout << (label_map.size() > 0 ? "Метки найдены" : "Метки НЕ найдены");
     cout << endl << endl;
@@ -316,10 +328,10 @@ vector<string> parse_program(vector<string> program) {
         разделяя её на код команды, литерал и адреса/метки адресов
       * ------------------------------------------------------------ */
     for (unsigned int i = 0; i < program.size(); i++) {
-
-        // Вывод текущей команды
         string cmd = program[i];
         cout << "CURRENT CMD: " << cmd << endl;
+        // Вывод текущей команды
+        // cout << "CURRENT CMD: " << cmd << endl;
 
         // Проверяем соответствие команды
         // с регулярными значениями
